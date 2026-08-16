@@ -160,36 +160,56 @@ small question that touches the changed area. Verify Claude:
 If something's off, that's usually a hint that a hand-curated file
 needs another small edit.
 
-### 8. Bump VERSION, commit, tag
+### 8. Commit, tag, then stamp VERSION
 
-Update `um-ref/VERSION` to a new semver identifier (`1.0`, `1.1`,
-`2.0`, etc.). Convention:
+The release lands in two commits: a content commit that carries the
+actual release, plus a follow-up "stamp VERSION" commit that writes
+`git describe --tags --long` output into `um-ref/VERSION`. The stamp
+step is what makes every state of `main` unambiguously identifiable
+as BASE by the `um-ref-merge` skill, not just tagged releases.
 
-- Bump the **minor** for content additions, clarifications, and
-  generated-file refreshes — changes a 3-way merge should handle
-  cleanly against a user's customized active skill.
-- Bump the **major** for changes likely to invalidate a user's local
-  customizations: file renames, structural rewrites, or removals of
-  content the user may have edited. A major bump is a signal to
-  users to review their local edits carefully before updating.
-
-VERSION must be bumped on every release — it is the anchor the
-`um-ref-merge` skill uses as BASE when contributors ask Claude to
-update or merge their active skill.
-
-Then commit and tag:
+**8a. Content commit + tag.**
 
 ```
 git add um-ref/
-git commit -m "release <VERSION>"
-git tag release-<VERSION>
+git commit -m "release <SEMVER>"
+git tag release-<SEMVER>
+```
+
+`<SEMVER>` picks the human-readable release name. Convention:
+
+- Bump the **minor** (`1.0` → `1.1`) for content additions,
+  clarifications, and generated-file refreshes — changes a 3-way
+  merge should handle cleanly against a user's customized active
+  skill.
+- Bump the **major** (`1.x` → `2.0`) for changes likely to invalidate
+  a user's local customizations: file renames, structural rewrites,
+  or removals of content the user may have edited. A major bump is a
+  signal to users to review their local edits carefully before
+  updating.
+
+**8b. Stamp VERSION with the describe string.**
+
+```
+git describe --tags --long > um-ref/VERSION
+git add um-ref/VERSION
+git commit -m "stamp VERSION"
 git push origin main --tags
 ```
 
-The commit includes the generated `java_api.md` and `dotnet_api.md`,
-plus the bundled `config-data.xml`, `index-ume.m4`, and `index-dro.m4`
-— a fresh clone should be usable in customer mode without anyone
-having to set `LBM_REPO`.
+After 8b, `um-ref/VERSION` contains a string like
+`release-1.1-0-g<hash>`. The hash points at 8a's commit — the tagged
+release. `um-ref-merge` reads this file, extracts the hash, and does
+`git checkout <hash>` to reach BASE. Contributions between releases
+follow the same pattern (see `um-ref-merge`'s Step 10-C): a content
+commit, then a stamp commit that writes `release-<PREV>-<N>-g<hash>`.
+Every commit on `main` is therefore identifiable as BASE, whether or
+not it corresponds to a tagged release.
+
+The content commit (8a) includes the generated `java_api.md` and
+`dotnet_api.md`, plus the bundled `config-data.xml`, `index-ume.m4`,
+and `index-dro.m4` — a fresh clone should be usable in customer mode
+without anyone having to set `LBM_REPO`.
 
 ## When this runbook is overkill
 

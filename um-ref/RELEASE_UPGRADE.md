@@ -160,21 +160,13 @@ small question that touches the changed area. Verify Claude:
 If something's off, that's usually a hint that a hand-curated file
 needs another small edit.
 
-### 8. Commit, tag, then stamp VERSION
-
-The release lands in two commits: a content commit that carries the
-actual release, plus a follow-up "stamp VERSION" commit that writes
-`git describe --tags --long` output into `um-ref/VERSION`. The stamp
-step is what lets a user read their installed `um-ref/VERSION` and
-know exactly which commit they installed from — not just "which
-tagged release" but "which specific commit on `main`."
-
-**8a. Content commit + tag.**
+### 8. Commit, tag, and push
 
 ```
 git add um-ref/
 git commit -m "release <SEMVER>"
 git tag release-<SEMVER>
+git push origin main --tags
 ```
 
 `<SEMVER>` picks the human-readable release name. Convention:
@@ -189,32 +181,16 @@ git tag release-<SEMVER>
   signal to users to review their local edits carefully before
   updating.
 
-**8b. Stamp VERSION with the describe string.**
-
-```
-git describe --tags --long > um-ref/VERSION
-git add um-ref/VERSION
-git commit -m "stamp VERSION"
-git push origin main --tags
-```
-
-After 8b, `um-ref/VERSION` contains a string like
-`release-1.1-0-g<hash>`. The hash points at 8a's commit — the tagged
-release. Contributions between releases follow the same pattern (see
-`um-ref-merge`'s Step 10-C): a content commit, then a stamp commit
-that writes `release-<PREV>-<N>-g<hash>`.
-
-The `um-ref-merge` skill does not parse VERSION programmatically —
-it trusts whatever commit the user has checked out — so the stamp
-is purely a human-facing marker of "which commit was I on at install
-time." That's still enough to identify BASE unambiguously, since a
-user with a VERSION file can read the `-g<hash>` suffix and check
-out that commit directly.
-
-The content commit (8a) includes the generated `java_api.md` and
+The release commit includes the generated `java_api.md` and
 `dotnet_api.md`, plus the bundled `config-data.xml`, `index-ume.m4`,
 and `index-dro.m4` — a fresh clone should be usable in customer mode
 without anyone having to set `LBM_REPO`.
+
+Users install by cloning this repo and copying `um-ref/` into
+`~/.claude/skills/`; their clone stays intact and serves as the
+record of which commit their install came from. The `um-ref-merge`
+skill trusts that clone state as BASE for future Update and
+Contribute runs.
 
 ## When this runbook is overkill
 

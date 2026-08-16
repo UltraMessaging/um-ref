@@ -26,8 +26,10 @@ Then, in that directory, launch Claude Code and ask:
 Please install the skill in this repo.
 ```
 
-Claude will copy the `um-ref/` subdirectory into `~/.claude/skills/um-ref/`,
-including the `VERSION` file that future updates and merges rely on.
+Claude will copy the `um-ref/` subdirectory into `~/.claude/skills/um-ref/`.
+**Keep this clone intact** — the commit it's checked out at is the
+BASE that future updates and merges (via the `um-ref-merge` skill)
+rely on to reconcile your local edits against upstream.
 
 ### The um-ref-merge companion skill
 
@@ -148,10 +150,6 @@ bundled `config-data.xml`, `index-ume.m4`, and `index-dro.m4` — must not
 be hand-edited; the merge tooling always takes the upstream copy.
 
 ## Versioning
-
-The `um-ref/VERSION` file records which skill release the installed
-content corresponds to. This is the anchor `um-ref-merge` uses to identify
-BASE for 3-way merges. Do not edit it by hand.
 
 This skill was developed with UM version 6.17.1. It should be useful for
 older versions but might sometimes think a feature is available that

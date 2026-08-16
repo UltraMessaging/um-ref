@@ -165,8 +165,9 @@ needs another small edit.
 The release lands in two commits: a content commit that carries the
 actual release, plus a follow-up "stamp VERSION" commit that writes
 `git describe --tags --long` output into `um-ref/VERSION`. The stamp
-step is what makes every state of `main` unambiguously identifiable
-as BASE by the `um-ref-merge` skill, not just tagged releases.
+step is what lets a user read their installed `um-ref/VERSION` and
+know exactly which commit they installed from — not just "which
+tagged release" but "which specific commit on `main`."
 
 **8a. Content commit + tag.**
 
@@ -199,12 +200,16 @@ git push origin main --tags
 
 After 8b, `um-ref/VERSION` contains a string like
 `release-1.1-0-g<hash>`. The hash points at 8a's commit — the tagged
-release. `um-ref-merge` reads this file, extracts the hash, and does
-`git checkout <hash>` to reach BASE. Contributions between releases
-follow the same pattern (see `um-ref-merge`'s Step 10-C): a content
-commit, then a stamp commit that writes `release-<PREV>-<N>-g<hash>`.
-Every commit on `main` is therefore identifiable as BASE, whether or
-not it corresponds to a tagged release.
+release. Contributions between releases follow the same pattern (see
+`um-ref-merge`'s Step 10-C): a content commit, then a stamp commit
+that writes `release-<PREV>-<N>-g<hash>`.
+
+The `um-ref-merge` skill does not parse VERSION programmatically —
+it trusts whatever commit the user has checked out — so the stamp
+is purely a human-facing marker of "which commit was I on at install
+time." That's still enough to identify BASE unambiguously, since a
+user with a VERSION file can read the `-g<hash>` suffix and check
+out that commit directly.
 
 The content commit (8a) includes the generated `java_api.md` and
 `dotnet_api.md`, plus the bundled `config-data.xml`, `index-ume.m4`,

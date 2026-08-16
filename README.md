@@ -23,7 +23,7 @@ git clone https://github.com/UltraMessaging/um-ref
 Then, in that directory, launch Claude Code and ask:
 
 ```
-Please install the um-ref skill from this repo.
+Please install the skill in this repo.
 ```
 
 Claude will copy the `um-ref/` subdirectory into `~/.claude/skills/um-ref/`,
@@ -41,8 +41,11 @@ cd $HOME/.claude/skills
 git clone https://github.com/UltraMessaging/um-ref-merge
 ```
 
-If you never plan to update or contribute, you can skip this. Most users
-should install it.
+Then, in that directory, launch Claude Code and ask:
+
+```
+Please install the skill in this repo.
+```
 
 ## Environment variables
 

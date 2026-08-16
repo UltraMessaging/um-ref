@@ -209,6 +209,23 @@ Names used to look up UM XML templates/contexts for the portal's proxy
 source or proxy receiver respectively. Lets you target specific UM
 templates per portal.
 
+**Which endpoint's config gets consulted for a given proxy source?**
+A DRO creates a proxy source in the TRD **facing the receiver** (not
+the TRD facing the originating source). That endpoint — the one that
+creates the proxy source — is the one whose `<lbm-config>` /
+`<lbm-attributes>` / `<source-context-name>` and per-topic
+`<sources>` config are consulted when building the proxy. The
+opposite endpoint (facing the originating source) creates a proxy
+**receiver**, so its receiver-side config applies there, but its
+source-side config is irrelevant to the proxy source on the other
+TRD.
+
+Practical implication: when tuning a proxy source (per-topic options,
+templates, transport tweaks), edit the endpoint whose TRD faces the
+receiver. Duplicating the same source-side config on both endpoints
+"to be safe" is harmless but misleading — only one side's config
+does anything, and edits on the wrong side silently no-op.
+
 ### `<max-queue>`
 Max bytes of buffered outbound data (blocking queue size). Default
 `1000000`.

@@ -9,6 +9,36 @@ This file is the load-bearing concept doc for any UM coding/design task.
 Read it end-to-end before writing or reviewing UM code. Reference docs
 (API headers, schema files) are listed in §1 and consulted as lookups.
 
+## 0. Platform and prerequisites (read first)
+
+This skill runs on both Linux/WSL and Windows (Git Bash). Two
+user-satisfied prerequisites and a couple of platform rules:
+
+- **`LBM_REPO` / `LBM_INC` / `LBM_DOC`** — at least one must point at a
+  UM source (see the Environment check below).
+- **`python` must invoke Python 3.6+.** The helper tools (`lbmopt.py`,
+  `xmlopt.py`, the `gen_*` scripts) are invoked as **`python …`**, never
+  `python3`. They are pure-Python and OS-agnostic; they only need a
+  Python 3 interpreter on the `python` name.
+  - **Windows (Git Bash):** `python3` usually does *not* exist but
+    `python` does and is Python 3 — so the tools work out of the box.
+  - **Linux/WSL:** if `python` is missing (some distros ship only
+    `python3`), map it: `ln -s "$(command -v python3)" ~/.local/bin/python`
+    (ensure `~/.local/bin` is on `PATH`). If a task needs a tool and
+    `python` isn't found, offer to create this symlink for the user
+    before proceeding.
+
+**Path/symlink rule by platform.** The skill prefers symlink paths
+(`./lbm_repo/…`) over env-var paths (`$LBM_REPO/…`) to avoid per-command
+permission prompts — but that only applies on **Linux/WSL**, where
+symlinks are real. On **Windows**, native symlinks require admin or
+Developer Mode and `ln -s` in Git Bash silently makes a *copy*, not a
+link — so **do not create or rely on `lbm_repo`/`lbm_inc`/`lbm_doc`
+symlinks on Windows; use the `$LBM_REPO`/`$LBM_INC`/`$LBM_DOC` env-var
+paths directly.** They resolve correctly there (Git Bash accepts the
+mixed `C:\…\lbm/src/…` form, and Python's `os.path.join` handles the
+backslashes).
+
 **Configuration review:** when asked to review or audit any UM
 configuration file (library XML or Store XML), read
 `configuration_best_practices.md` before commenting. Use it as the
@@ -25,9 +55,22 @@ If the deployment under discussion is on a different UM version,
 verify against that version's documentation before relying on
 specifics from this skill.
 
-**Environment check:** Once per conversation, run `ls lbm_repo
-lbm_inc lbm_doc` and `printenv LBM_REPO LBM_INC LBM_DOC` to see
-which of these three independent UM sources are available:
+**Version compatibility rule:** an application built against an
+older UM version can run against a newer library — this is the
+supported direction. The reverse (build against a newer library,
+deploy against an older library) is **not** supported: the newer
+build may expect fields or APIs the older library doesn't have.
+Customers usually don't have to think about this; UM's design
+(most structs opaque, visible ones only ever grow at the end,
+library always allocates) makes it work transparently. When
+diagnosing weird cross-version behavior, confirm the build/deploy
+direction before looking further. Deep-dive in `gotchas.md`
+("Cross-edition daemon/library in one install").
+
+**Environment check:** Once per conversation, run `printenv LBM_REPO
+LBM_INC LBM_DOC` (and, on Linux/WSL only, `ls lbm_repo lbm_inc
+lbm_doc` for the symlink form) to see which of these three independent
+UM sources are available:
 
 - `lbm_repo` / `LBM_REPO` — full source tree (internal engineers):
   headers, source, m4 doc sources, config-data.xml, examples.
@@ -38,9 +81,11 @@ which of these three independent UM sources are available:
 
 Two rules for using them:
 
-1. **Prefer the symlink path over the env-var path** for direct file
-   reads (`./lbm_repo/...` over `$LBM_REPO/...`). Env-var expansions
-   trigger a permission prompt every command; symlinks don't.
+1. **On Linux/WSL, prefer the symlink path over the env-var path** for
+   direct file reads (`./lbm_repo/...` over `$LBM_REPO/...`). Env-var
+   expansions trigger a permission prompt every command; symlinks don't.
+   **On Windows this rule is inverted** — symlinks aren't reliable
+   (see §0), so use `$LBM_REPO/...` directly.
 2. **In customer mode** (no `lbm_repo`), don't cite internal source
    paths in responses — describe behavior, cite options and public
    API, quote from public headers.
@@ -50,10 +95,13 @@ back to bundled copies of `config-data.xml`, `index-ume.m4`, and
 `index-dro.m4` if no repo is available — no env var or symlink is
 required to answer per-option config questions.
 
-If none of the three sources are available and the question needs
-API signatures or doc prose, tell the user once: "I need one of
-`lbm_repo` (internal), `lbm_inc` (public headers), or `lbm_doc`
-(HTML docs) for this. Set whichever applies and retry."
+If the environment check finds none of the three sources configured
+(no env var, and on Linux/WSL no symlink either), read `setup_help.md`
+and walk the user through it before proceeding — that file covers what
+to point where, symlinks vs. env vars, and the `python` symlink. If
+the sources are present but a task specifically needs one that isn't
+(e.g., API signatures with only `lbm_doc` set), tell the user once
+which one is missing and continue with what's available where possible.
 
 **Version drift note:** The bundled `config-data.xml` / m4 sources
 are version-locked to this skill's release (see the **Version:**
@@ -71,10 +119,12 @@ question, and flag the mismatch.
 | Looking up a C API function/type | `lbm.h` under `lbm_repo/src/lib/lbm/` (internal) or `lbm_inc/` (customer) |
 | Looking up Java/.NET API | `java_api.md`, `dotnet_api.md` |
 | Tuning or understanding LBT-RM NAK suppression / timers | `lbtrm_details.md` |
+| Message fragmentation, APDU, datagram sizing (1472 / dynamic_fragmentation_reduction) | `fragmentation_details.md` |
 | Designing a DRO topology / cross-TRD routing | `dro_details.md`, then `dro_config.md` |
 | Understanding lbmmon output / monitoring API | `monitoring_details.md` |
 | Sizing or operating a persistent Store | `configuration_best_practices.md` §3–5, then `store_config.md` for schema lookup |
 | Need full doc prose (rare) | Internal: `lbm_repo/doc/*/index.m4`. Customer: grep HTML files under `lbm_doc/` |
+| A UM behavior contradicts what the API implies, or a customer says "flipping this knob broke my code" | `gotchas.md` |
 
 ## 1. File inventory
 
@@ -100,11 +150,11 @@ question, and flag the mismatch.
   `$LBM_REPO/doc/Config/reference/config-data.xml` → bundled copy in
   the skill directory.
   ```
-  python3 lbmopt.py <name>              # scope(s) + default(s)
-  python3 lbmopt.py <name> <scope>      # full dump
-  python3 lbmopt.py --search <keyword>  # find options by name fragment
-  python3 lbmopt.py --scope <scope>     # list all options in a scope
-  python3 lbmopt.py --list-scopes       # show all scopes
+  python lbmopt.py <name>              # scope(s) + default(s)
+  python lbmopt.py <name> <scope>      # full dump
+  python lbmopt.py --search <keyword>  # find options by name fragment
+  python lbmopt.py --scope <scope>     # list all options in a scope
+  python lbmopt.py --list-scopes       # show all scopes
   ```
 - `xmlopt.py` — query tool for Store (`ume`) and DRO (`dro`) XML config.
   Parses m4 sources. For each source, locates the file in this order:
@@ -112,12 +162,12 @@ question, and flag the mismatch.
   → bundled `index-ume.m4` / `index-dro.m4` in the skill directory.
   Does not read `lbm_doc` — parser is m4-specific.
   ```
-  python3 xmlopt.py ume <element-id>             # Store XML element/attribute
-  python3 xmlopt.py dro <element-id>             # DRO XML element/attribute
-  python3 xmlopt.py ume <id> --full              # include example XML
-  python3 xmlopt.py ume store-opt <name>         # <ume-attributes> store option
-  python3 xmlopt.py ume store-opt --list         # list all store options
-  python3 xmlopt.py ume --list / --search <kw>   # browse element ids
+  python xmlopt.py ume <element-id>             # Store XML element/attribute
+  python xmlopt.py dro <element-id>             # DRO XML element/attribute
+  python xmlopt.py ume <id> --full              # include example XML
+  python xmlopt.py ume store-opt <name>         # <ume-attributes> store option
+  python xmlopt.py ume store-opt --list         # list all store options
+  python xmlopt.py ume --list / --search <kw>   # browse element ids
   ```
   Element-id uses dot notation: `store`, `store.name`,
   `gateway-keepalive.interval`. Use `lbmopt.py` for UM library options.
@@ -136,6 +186,13 @@ question, and flag the mismatch.
   differences from PGM. Read when tuning LBT-RM or diagnosing recovery
   latency; use `configuration_best_practices.md` §2 for the actionable
   rules.
+- `fragmentation_details.md` — message fragmentation on the send path:
+  the APDU concept (`apdu` / `raw_apdu` / `frag_mtu`), how
+  `dynamic_fragmentation_reduction` makes the APDU dynamic per-message,
+  the MTU/header math behind `datagram_max_size = 1472`, and why the
+  `LBM_DEBUG_NET` "APDU" log line is misleading under DFR. Read when
+  tuning datagram sizes to avoid IP fragmentation or diagnosing
+  unexpected fragmentation.
 - `monitoring_details.md` — how ApplicationSourceID works in lbmmon
   output, automatic vs explicit monitoring, monitoring context
   resource defaults, and diagnostic implications.
@@ -143,6 +200,11 @@ question, and flag the mismatch.
   Companion to `dro_config.md` (schema). Read only when designing
   topology, not while writing application code.
 - `dro_config.md` — DRO XML schema. Lookup.
+- `gotchas.md` — University of Hard Knocks file: surprising UM
+  behaviors that don't fit any single subsystem. Consult when a
+  behavior contradicts what the API surface implies, or when a
+  customer says "it used to work; then I flipped one config knob and
+  it broke." Keyword-indexed for grep. Not consulted routinely.
 - `build.sh` — regenerates `java_api.md` and `dotnet_api.md` from
   the upstream Java and C# sources. Run after upstream API changes;
   outputs are checked in so a fresh clone is usable without it.
@@ -639,9 +701,29 @@ protocol.
 
 ### Late join
 
-Source retains recent messages; new receiver pulls history via OTR
-when subscribing. Source: `ume_retention_size_threshold`. Receiver
-requests automatically if the source supports it.
+Source retains recent messages; new receiver pulls history when
+subscribing. The retention buffer is **per topic** (not per transport
+session) and lives on the source side independent of persistence.
+
+- Streaming (non-UME): `retransmit_retention_size_threshold` /
+  `retransmit_retention_size_limit` /
+  `retransmit_retention_age_threshold`. The buffer fills to the
+  configured size, then rolls oldest-out as new messages are sent.
+- Persistent (UME): same buffer, but the Store keeps it fresh by
+  sending stability confirmations that let entries retire.
+  `ume_retention_size_threshold`,
+  `ume_retention_unique_confirmations`.
+
+Receiver: `use_otr 1` to opt into OTR fetches when transport-level
+recovery times out.
+
+Because retention is per-topic while the transmission window is
+per-transport-session, retention also protects slow topics from
+starvation on a shared session. Example: topics `fast` and `slow`
+share one LBT-RM session; a burst on `fast` can push `slow`'s
+message out of the session txwmap, but `slow`'s retention buffer
+still holds the message and can serve a late-join or OTR request
+for it.
 
 ### Implicit batching
 
@@ -651,11 +733,10 @@ disable batching for that message).
 
 ### Off-Transport Recovery (OTR)
 
-Source-side retention buffer separate from the transport, queryable
-by receivers when transport recovery times out. Rarely needed
-without persistence. Source:
-`ume_retention_size_threshold`,
-`ume_retention_unique_confirmations`. Receiver: `use_otr 1`.
+Receiver-driven fetch from the source's retention buffer (see
+"Late join" above) when transport-level NAK recovery times out.
+Works for streaming and persistent sources. Receiver opt-in:
+`use_otr 1`.
 
 ## 10. Persistence (UMP / Store) — architecture
 

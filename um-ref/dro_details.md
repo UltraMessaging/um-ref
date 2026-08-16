@@ -246,6 +246,93 @@ beasts:
 relationship, not the real end-to-end source. A BOS/EOS event may mean
 "DRO created/removed the proxy," not "publisher started/stopped."
 
+### What proxy sources do and don't implement
+
+A proxy source terminates and re-originates the **transport protocol
+only**:
+
+- Transport framing (LBT-RM / LBT-RU / TCP / LBT-IPC).
+- Loss detection, NAK handling, retransmission for its transport
+  session.
+- Transport-level flow control and rate limits.
+
+Proxy sources do **not** implement topic-level (delivery-controller-
+level) functionality:
+
+- Late Join (LJ).
+- Off-Transport Recovery (OTR).
+- Message ordering.
+- Message reassembly (fragment coalescing).
+- **Persistence (UME).** Registration, stability ACKs, LJ/OTR against
+  a Store — end-to-end from the originating source and its Store to
+  the final receiver.
+- Any other end-to-end delivery guarantee.
+
+Those functions are end-to-end from the **originating source** to the
+**final receiver**. A far-side receiver that requests LJ or OTR sends
+the request all the way back to the originating source (traversing
+any intervening DROs); the originating source responds all the way
+back. For persistence, the far-side receiver sees the originating
+source's persistence metadata via end-to-end topic advertisement and
+registers with the Store via end-to-end messaging that any
+intervening DROs relay.
+
+**Config implication.** `ume_*` options, `late_join=1`, OTR request
+timeouts, and similar delivery-controller-level options should not
+be placed on proxy sources in the DRO's XML config. UM does not
+strongly prevent inappropriate settings; a user who places them
+there may see:
+
+- Options silently ignored (best case).
+- Options applied at parse time but bypassed at runtime because the
+  proxy-source code knows it's running under a DRO.
+- Malfunction from bad interactions with the proxy's non-persistent
+  runtime behavior.
+
+Diagnostic: a healthy DRO core should show zero UME/LJ receive-side
+structures on the DRO's proxy paths. Their appearance points at
+config that shouldn't be there.
+
+**SSF is the exception.** Source-Side Filtering straddles the
+transport/delivery-controller divide. Unlike other DC-level features,
+SSF *is* a desired proxy-source configuration —
+`transport_source_side_filtering_behavior=inclusion` on the proxy
+source lets the DRO's outgoing transport filter by receiver interest
+just as the originating source would. Set SSF on both the
+originating source AND the proxy source (via the proxy-creating
+endpoint's per-topic `<sources>` config) when you want SSF semantics
+preserved across the DRO.
+
+### Which transports cross a DRO
+
+Common misconception: "shared-memory transports can't cross a DRO."
+The reality is more nuanced:
+
+- **LBT-IPC crosses a DRO.** The discovering endpoint sees the IPC
+  topic via TR and creates an IPC proxy receiver on the source side;
+  the other endpoint creates an IPC proxy source on the receiver
+  side. Two IPC shm segments are involved end-to-end: one for the
+  originating source (consumed by the DRO), one for the proxy source
+  (consumed by the receiver).
+- **LBT-SMX does NOT cross a DRO.** No SMX proxy source support. If
+  a design requires an SMX topic to reach a receiver in another
+  TRD, the design has to change — originate on a different
+  transport, or place both endpoints in the same TRD.
+- **LBT-RM Smart Source (SSRC) crosses as regular LBT-RM.** The DRO
+  can consume from an SSRC originator but originates the proxy as
+  plain LBT-RM. Receivers can't tell (and don't care) which flavor
+  of RM source they're subscribed to, so this is transparent — but
+  the SSRC optimizations (pre-allocated buffer pool, arena) exist
+  only on the origin side, not on the proxy side.
+- **LBT-RU with Source-Side Filtering crosses as regular LBT-RU.**
+  SSF is a source-side per-receiver interest table. The proxy
+  source is plain LBT-RU from the far-side receiver's perspective;
+  SSF state exists only on the originating source.
+
+Rule of thumb: DROs proxy anything except SMX. Source-side
+optimizations (SSRC, SSF) are lost through the proxy, but the data
+still flows on a plausible fallback transport.
+
 ---
 
 ## 8. Hotlinks (Advanced — Hot/Hot Redundancy)
@@ -262,6 +349,33 @@ continues with no visible gap.
 
 Don't reach for hotlinks unless you specifically need zero-gap failover.
 Base-algorithm parallel links with fast failover are usually enough.
+
+### `use_hotlink` on proxy sources — don't
+
+DRO hotlink support comes from the endpoint-level
+`<hotlink-index>` / `<route-group>` elements described below, **not**
+from per-topic `use_hotlink=1` on the DRO's proxy sources or
+proxy receivers. Setting `use_hotlink` on a proxy source
+templates it as a hotlinked source, which is the wrong mental
+model — hotlinks between TRDs are a *DRO-level* concept, not a
+per-proxy-source one.
+
+### Hotlink advertising can bypass a DRO
+
+If a source and a receiver both have `use_hotlink=1` and are in
+different TRDs on the same host (or otherwise L2-reachable),
+they'll find each other via transport-level hotlink advertising
+and bypass the DRO entirely — the receiver joins the origin
+source directly, not the proxy. Nothing warns you.
+
+Diagnostic use: on a customer core, a receiver on a hotlinked
+topic with no receive-side `lbm_hf_rcv_t` structures probably
+means the receive path is DRO-proxied rather than hotlink-direct.
+The other way around (hotlink-direct despite the DRO being
+present) is a lab setup gotcha: if you're testing DRO behavior
+across TRDs that end up co-reachable, hotlinks will silently
+short-circuit the DRO. Fix by either disabling hotlinks on the
+test topic or by making the TRDs genuinely not L2-reachable.
 
 ### How hot/hot is actually implemented — `route-group`
 
@@ -506,6 +620,16 @@ DRO.
 10. **Expecting instant failover from parallel links** — base routing
     gives you fast-ish failover (seconds), not zero-loss failover. Use
     hotlinks if zero-gap is required.
+11. **Wrong startup order.** Bring processes up as **DRO(s) → Store(s)
+    → applications**. Apps that try to resolve topics across TRDs
+    before the DRO is routing will spend recovery time waiting for
+    proxy-source advertisements they can't get yet; Stores that come
+    up after their sources register miss the registration and force
+    re-registration. Neither is fatal — the system converges — but a
+    slow start eats into bounded-duration tests and provokes
+    "why is nothing working?" moments. For UDP TR deployments, allow
+    convergence time (single-digit seconds is typical) between
+    starting the DRO and starting apps.
 
 ---
 

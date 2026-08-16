@@ -26,8 +26,11 @@ if [[ -z "${LBM_REPO:-}" ]]; then
     exit 1
 fi
 
-python3 gen_java_api.py
-python3 gen_dotnet_api.py
+# `python` must invoke Python 3.6+ (see SKILL.md §0). We use `python`
+# rather than `python3` so the same command works on Windows (Git Bash),
+# where `python3` typically doesn't exist.
+python gen_java_api.py
+python gen_dotnet_api.py
 
 # Refresh bundled config sources. Each src must exist; missing files
 # indicate a workspace problem, not something to silently skip.

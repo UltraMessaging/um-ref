@@ -160,13 +160,36 @@ small question that touches the changed area. Verify Claude:
 If something's off, that's usually a hint that a hand-curated file
 needs another small edit.
 
-### 8. Commit
+### 8. Bump VERSION, commit, tag
 
-Commit (or `p4 add`/`p4 submit`) the updated skill files. The
-generated `java_api.md` and `dotnet_api.md`, plus the bundled
-`config-data.xml`, `index-ume.m4`, and `index-dro.m4`, are part of
-the commit — a fresh clone should be usable in customer mode
-without anyone having to set `LBM_REPO`.
+Update `um-ref/VERSION` to a new semver identifier (`1.0`, `1.1`,
+`2.0`, etc.). Convention:
+
+- Bump the **minor** for content additions, clarifications, and
+  generated-file refreshes — changes a 3-way merge should handle
+  cleanly against a user's customized active skill.
+- Bump the **major** for changes likely to invalidate a user's local
+  customizations: file renames, structural rewrites, or removals of
+  content the user may have edited. A major bump is a signal to
+  users to review their local edits carefully before updating.
+
+VERSION must be bumped on every release — it is the anchor the
+`um-ref-merge` skill uses as BASE when contributors ask Claude to
+update or merge their active skill.
+
+Then commit and tag:
+
+```
+git add um-ref/
+git commit -m "release <VERSION>"
+git tag release-<VERSION>
+git push origin main --tags
+```
+
+The commit includes the generated `java_api.md` and `dotnet_api.md`,
+plus the bundled `config-data.xml`, `index-ume.m4`, and `index-dro.m4`
+— a fresh clone should be usable in customer mode without anyone
+having to set `LBM_REPO`.
 
 ## When this runbook is overkill
 

@@ -125,6 +125,7 @@ question, and flag the mismatch.
 | Sizing or operating a persistent Store | `configuration_best_practices.md` §3–5, then `store_config.md` for schema lookup |
 | Need full doc prose (rare) | Internal: `lbm_repo/doc/*/index.m4`. Customer: grep HTML files under `lbm_doc/` |
 | A UM behavior contradicts what the API implies, or a customer says "flipping this knob broke my code" | `gotchas.md` |
+| Understanding lbmstrm send behavior, rate accuracy, or EWOULDBLOCK handling | `lbmstrm_analysis.md` |
 
 ## 1. File inventory
 
@@ -205,6 +206,11 @@ question, and flag the mismatch.
   behavior contradicts what the API surface implies, or when a
   customer says "it used to work; then I flipped one config knob and
   it broke." Keyword-indexed for grep. Not consulted routinely.
+- `lbmstrm_analysis.md` — send loop timing algorithm, EWOULDBLOCK
+  handling, UM sequence number behavior on blocked sends, burst-then-
+  sleep pattern from sleep granularity, and what lbmstrm is and is
+  not suitable for. Read when analysing lbmstrm behavior or using it
+  as a reference for how to (or not to) structure a send loop.
 - `build.sh` — regenerates `java_api.md` and `dotnet_api.md` from
   the upstream Java and C# sources. Run after upstream API changes;
   outputs are checked in so a fresh clone is usable without it.

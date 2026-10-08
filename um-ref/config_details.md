@@ -139,6 +139,25 @@ at **any** of layers 1–5 also apply. This is not a scoping error:
 a source-level template at layer 5 will still apply its context-
 scope options (UM applies all scope types from every layer).
 
+The same layering applies to every context the application creates,
+including contexts UM creates internally, such as the automatic-monitoring
+context (see `monitoring_details.md`).
+
+### List options accumulate instead of "last wins"
+
+A few context options hold a list, and each setting adds to the list instead
+of replacing it: `resolver_unicast_daemon` (`lbmrd` list),
+`resolver_service` (SRS list, up to 5), and `broker`. So layered templates
+and config files accumulate entries. To replace a list, start the value with
+an entry whose IP and port are both zero, `0.0.0.0:0`, which empties it.
+Entries are processed left to right, so `0.0.0.0:0,10.1.2.3:12801` clears and
+then adds in one setting. Plain `0.0.0.0` is rejected as malformed. Clearing a
+list doesn't change related switches such as
+`resolver_disable_udp_topic_resolution`. Duplicate entries are skipped with a
+warning (`Core-9625-1`, `Core-10403-120`). Source:
+`lbm_context_attr_add_ucast_res_daemon()`, `lbm_context_attr_add_res_service()`
+and `lbm_context_attr_add_broker()` in `lbmctx.c`.
+
 ### The `usroptmask` protection
 
 At `lbm_src_topic_alloc()` / `lbm_rcv_topic_lookup()` time (the

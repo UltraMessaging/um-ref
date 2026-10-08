@@ -62,6 +62,60 @@ Source: `src/mon/lbmmontrlbm.c`, `SourceContextOption[]` and
 `lbm_context_attr_str_setopt(..., "request_tcp_bind_request_port", "0")`
 call in the init path.
 
+## The monitoring context inherits application-level XML templates
+
+The LBM monitoring transport creates its context with `context_name` set
+to `29west_statistics_context`, and `lbm_context_create()` then applies XML
+config by that name (`lbm_xmlcfg_check_context()` in `lbmxmlcfg.c`). It goes
+through the same layers as any other context: the `<application template=...>`
+templates first, then `<contexts template=...>`, then the templates and options
+of `<context name="29west_statistics_context">`. So whatever an
+application-level template sets for the application's own contexts also lands
+on the monitoring context, unless the monitoring context's own template
+overrides it. (`context_name` and `request_tcp_bind_request_port=0` are set
+with `setopt`, so XML can't override those; see the `usroptmask` note in
+`config_details.md` §3a.)
+
+The trap is topic-resolution settings in an application-level template.
+`resolver_service` and `resolver_unicast_daemon` are list options that
+accumulate rather than override (`config_details.md` §3a), and an inherited
+`resolver_disable_udp_topic_resolution=1` also disables `lbmrd`-based
+resolution.
+
+Real case (UM 6.17): an application-level template set `resolver_service`
+(SRS) and `resolver_disable_udp_topic_resolution=1` for the data TRD. The
+monitoring context's own template added an `lbmrd` for the monitoring TRD, but
+inherited both settings: it resolved through the SRS with `lbmrd` resolution
+off, and the MCS never received that application's statistics.
+
+**Symptom:** one application's records are missing from the MCS/`lbmmon`
+output while other applications' arrive. The application's log shows an
+`SRS Controller Connection ... for ContextID (N)` where N (decimal) is the
+`29west_statistics_context` ContextID from its `Context ... created` line
+(hex).
+
+**Fix:** make the monitoring context's template self-contained by clearing the
+inherited lists (`0.0.0.0:0`) and re-enabling UDP topic resolution:
+
+```xml
+<template name="mon_ctx">
+  <options type="context">
+    <!-- Override topic resolution settings inherited from the application's
+         templates. An entry of 0.0.0.0:0 clears a resolver list. -->
+    <option name="resolver_service" default-value="0.0.0.0:0"/>
+    <option name="resolver_disable_udp_topic_resolution" default-value="0"/>
+    <option name="resolver_unicast_daemon" default-value="0.0.0.0:0,LBMRD_IP:LBMRD_PORT"/>
+    <!-- interface, port ranges, etc. for the monitoring TRD -->
+  </options>
+</template>
+```
+
+Alternatively, attach the data-TRD templates to the application's own
+`<context>` element instead of `<application>`, so the monitoring context
+never inherits them. Verified on UM 6.17: after the fix, the monitoring
+context made no SRS connection and its records reached the MCS. Clearing an
+inherited `lbmrd` list is confirmed from source only.
+
 ## Diagnostic implication
 
 If lbmmon output shows multiple distinct ApplicationSourceIDs for the same
@@ -205,3 +259,63 @@ The LBM transport module's options string accepts `config=FILE`
 (a UM configuration file applied to the internal context and
 receiver) and `topic=NAME` (statistics topic; default
 `/29west/statistics`, set in `lbmmontrlbm.c:DEFAULT_TOPIC`).
+
+## Where the protobuf monitoring messages are built
+
+The `.proto` files are `src/monproto/*.proto` (internal source tree).
+Each component fills its messages in different code; to learn what a
+field really contains, read the filling code, not just the `.proto`:
+
+| Message | `.proto` | Filled in |
+|---|---|---|
+| `UMSMonMsg` (library: context, transports, event queue, receiver topic, wildcard receiver) | `ums_mon.proto` | `src/mon/lbmmonfmtpb.c` (`lbmmon_*_format_pb_serialize()`; `_deserialize()` is the reverse), from the `lbm_*_stats_t` structs in `lbm.h` |
+| `UMMonAttributes` (in every message) | `um_mon_attributes.proto` | `lbmmon_attributes_format_pb_serialize()` in `lbmmonfmtpb.c` for the library, Store, and DRO; `MonitorInfoMessage.srsAttributesToProtobuf()` for the SRS |
+| `UMPMonMsg` (Store) | `ump_mon.proto` | `src/stored/umestats.c`: `umestore_lbmmon_retrieve_*()` for configs and stats; `umestore_process_event()` for events |
+| `DROMonMsg` | `dro_mon.proto` | `src/gateway/tnwg_dstat.c` (`tnwg_retrieve_mon_*()`) |
+| `SRSMonMsg` | `srs_mon.proto` | `src/srs/daemon/src/main/java/com/informatica/um/srs/monitor/MonitorInfoMessage.java` |
+
+The deprecated non-protobuf daemon statistics have C structs in
+`src/lib/lbm/umedmonmsgs.h` (Store) and `src/lib/lbm/tnwgdmonmsgs.h`
+(DRO). Their field meanings are mostly still accurate for the matching
+protobuf fields, but they are not maintained; the `.proto` comments are
+the definitive field descriptions for the Store, DRO, and SRS.
+
+Behaviors that surprise consumers:
+
+- **Store IP addresses are integers.** `UMPMonMsg.Configs.ip_addr` and
+  `...RcvConfig.ip_addr` are `uint32` holding the raw `s_addr` in
+  network byte order (kept from `umedmonmsgs.h`). On an x86 Store host,
+  10.29.3.42 arrives as 0x2A031D0A (704847114). Every other address in
+  the monitoring messages is a dotted-decimal string.
+- **SRS periodic updates set only what changed.** A snapshot sets every
+  SRS statistic; a periodic update sets only the statistics that
+  changed, so proto3 consumers see the others as zero, not as absent.
+- **Store event gaps (as of DEV_MAIN, 2026-10).**
+  `SOURCE_REREGISTERED_EVENT` is never delivered (no case for it in
+  `umestore_process_event()`), and `Event.dmon_topic_idx` is never set.
+
+## MCS: monitoring data as JSON in SQLite
+
+With its SQLite connector, MCS stores each received message as one row
+holding the **whole top-level message** as JSON, in the table for its
+type: `umsmonmsg`, `umpmonmsg`, `dromonmsg`, or `srsmonmsg` (created by
+`src/mon/daemon/src/bin/ummon_db.sql`; each has a single `message`
+column). The conversion is Java
+`JsonFormat.printer().includingDefaultValueFields()`
+(`src/mon/daemon/.../connector/sqlite/UMMonDBSQLite.java`), so the
+standard proto3 JSON mapping applies:
+
+- Field names are lowerCamelCase (`bytes_sent` -> `bytesSent`); paths
+  are rooted at the message, for example
+  `$.stats.sourceTransports[0].lbtrm.bytesSent`.
+- 64-bit integers are JSON **strings** (`"1000"`). SQLite's
+  `json_extract()` returns them as text, so `max()`, `ORDER BY`, and
+  `> N` compare as text (any text is greater than any number) unless
+  the query uses `CAST(... AS INTEGER)`.
+- Scalars are always present; unset sub-messages and unused `oneof`
+  members are omitted; enums are value names; `bytes` are base64.
+- `UMMonControlMsg` is not stored.
+
+The Operations Guide's "MCS JSON Format" section documents every
+stored field (path, type, description), generated from the `.proto`
+files and `lbm.h` / `lbmmon.h` by `doc/share/gen_stats_map.py`.

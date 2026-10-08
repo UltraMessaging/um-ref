@@ -39,6 +39,20 @@ paths directly.** They resolve correctly there (Git Bash accepts the
 mixed `C:\…\lbm/src/…` form, and Python's `os.path.join` handles the
 backslashes).
 
+**Searching the UM source: `grep` can silently skip files.** In
+Claude Code's Bash tool, `grep` is a shell function that runs Claude
+Code's embedded ugrep with `-I`; ugrep treats any file containing a
+byte that is not valid UTF-8 as binary and omits the whole file from
+the results without a warning. (This is specific to Claude Code. GNU
+grep in a user's own shell still searches such a file and only
+suppresses the offending line. Files whose non-ASCII text is valid
+UTF-8 are searched normally by both.) Some UM sources contain stray non-ASCII
+bytes (for example, a curly apostrophe in a comment in
+`src/stored/umestats.c`), so a search can report no match where there
+is one. When a search of the UM source comes up empty or suspiciously
+short, repeat it with `command grep -a` (or a short Python scan).
+When editing UM source, keep it plain 7-bit ASCII.
+
 **Configuration review:** when asked to review or audit any UM
 configuration file (library XML or Store XML), read
 `configuration_best_practices.md` before commenting. Use it as the
@@ -121,7 +135,7 @@ question, and flag the mismatch.
 | Tuning or understanding LBT-RM NAK suppression / timers | `lbtrm_details.md` |
 | Message fragmentation, APDU, datagram sizing (1472 / dynamic_fragmentation_reduction) | `fragmentation_details.md` |
 | Designing a DRO topology / cross-TRD routing | `dro_details.md`, then `dro_config.md` |
-| Understanding lbmmon output / monitoring API | `monitoring_details.md` |
+| Understanding lbmmon output / monitoring API, where a daemon's protobuf stats fields are filled in, or MCS's JSON; one app's monitoring data never arrives | `monitoring_details.md` |
 | Sizing or operating a persistent Store | `configuration_best_practices.md` §3–5, then `store_config.md` for schema lookup |
 | Need full doc prose (rare) | Internal: `lbm_repo/doc/*/index.m4`. Customer: grep HTML files under `lbm_doc/` |
 | A UM behavior contradicts what the API implies, or a customer says "flipping this knob broke my code" | `gotchas.md` |
@@ -196,7 +210,10 @@ question, and flag the mismatch.
   unexpected fragmentation.
 - `monitoring_details.md` — how ApplicationSourceID works in lbmmon
   output, automatic vs explicit monitoring, monitoring context
-  resource defaults, and diagnostic implications.
+  resource defaults, how the monitoring context inherits
+  application-level XML templates, and diagnostic implications; where each
+  component's protobuf monitoring messages are built; how MCS stores
+  them as JSON.
 - `dro_details.md` — concept doc for cross-TRD routing via DRO.
   Companion to `dro_config.md` (schema). Read only when designing
   topology, not while writing application code.

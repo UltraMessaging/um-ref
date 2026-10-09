@@ -139,6 +139,7 @@ question, and flag the mismatch.
 | Sizing or operating a persistent Store | `configuration_best_practices.md` §3–5, then `store_config.md` for schema lookup |
 | Need full doc prose (rare) | Internal: `lbm_repo/doc/*/index.m4`. Customer: grep HTML files under `lbm_doc/` |
 | A UM behavior contradicts what the API implies, or a customer says "flipping this knob broke my code" | `gotchas.md` |
+| System tools (`curl`, `git`, `ssh`) fail with OpenSSL symbol errors after setting `LD_LIBRARY_PATH` to UM's `lib/` | `gotchas.md` ("UM's bundled OpenSSL") |
 | Understanding lbmstrm send behavior, rate accuracy, or EWOULDBLOCK handling | `lbmstrm_analysis.md` |
 
 ## 1. File inventory

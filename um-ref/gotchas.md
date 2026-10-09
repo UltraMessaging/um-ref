@@ -205,3 +205,48 @@ memory" section for `lbm_topic_map_rcv.table[]` and its bucket
 nodes. Baseline is ~1 MB per receive-context (default
 `res_rcvmap_tablesz = 131111` × 8-byte pointers); growth well
 beyond that is accumulated advertisements, not receiver state.
+
+---
+
+## UM's bundled OpenSSL on `LD_LIBRARY_PATH` breaks system tools
+
+**Keywords:** LD_LIBRARY_PATH, libssl.so.1.1, libcrypto.so.1.1, OpenSSL,
+curl, git, ssh, wget, symbol lookup error, undefined symbol,
+`EVP_KDF_ctrl`, `OPENSSL_1_1_1b`, libk5crypto, UM encryption, TLS, lbm.sh.
+
+### Symptom
+
+After `export LD_LIBRARY_PATH=$LBM/lib` (the usual way to make UM
+programs find `liblbm.so`), unrelated system tools fail on startup,
+e.g.:
+
+    curl: symbol lookup error: /lib64/libk5crypto.so.3: undefined symbol: EVP_KDF_ctrl, version OPENSSL_1_1_1b
+
+Whether a given tool breaks depends on how the OS built it, so one tool
+can fail while a similar one works (seen on a RHEL-family host: `curl`
+failed, `wget` worked).
+
+### Why
+
+The UM `lib/` directory ships its own `libssl.so*` and `libcrypto.so*`.
+With that directory on `LD_LIBRARY_PATH`, every dynamically linked
+program prefers UM's copies over the system's, and system libraries
+built against a different OpenSSL fail symbol lookup. UM binaries and
+libraries have no RPATH/RUNPATH, and the UM-supplied `SRS` and `MCS`
+wrapper scripts don't set a library path, so UM relies on the caller
+to set `LD_LIBRARY_PATH`.
+
+UM uses these OpenSSL libraries only for its encryption (TLS) feature,
+and it loads them manually at runtime, not as a link-time dependency.
+If encryption isn't configured, the libraries don't need to be present.
+As far as Informatica knows, no UM customer uses the encryption feature.
+
+### What to tell the customer
+
+- Simplest fix, if they don't use UM encryption: delete `libssl.so*` and
+  `libcrypto.so*` from the UM `lib/` directory. UM runs fine without
+  them.
+- Otherwise, don't export `LD_LIBRARY_PATH=$LBM/lib` in a login shell.
+  Set it only for UM processes (per-command prefix or a wrapper
+  script), or clear it for the tool that breaks
+  (`env -u LD_LIBRARY_PATH curl ...`).

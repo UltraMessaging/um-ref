@@ -250,3 +250,196 @@ As far as Informatica knows, no UM customer uses the encryption feature.
   Set it only for UM processes (per-command prefix or a wrapper
   script), or clear it for the tool that breaks
   (`env -u LD_LIBRARY_PATH curl ...`).
+
+---
+
+## XML config: interface values in templates are validated in every process
+
+**Keywords:** `Core-11187-1`, `Core-11187-2`, `Core-5688-4085`, no interfaces
+matching criteria, error parsing application name, `default_interface` error,
+shared XML file across hosts, network namespaces, XML template interface,
+wrong host's interface, multi-host um.xml.
+
+### Symptom
+
+A process that loads an XML config logs errors such as:
+
+```
+Core-11187-1: Error parsing line 26 attribute name 'default_interface' - ignoring.
+Core-11187-2: Default value '10.201.1.0/24' invalid: CoreApi-5688-4101: no interfaces matching criteria.
+Core-5688-4085: error parsing application name 'resp' (set via ENV var)
+```
+
+The interface named belongs to a template that this application doesn't
+use. It is meant for another process, on another host or in another network
+namespace.
+
+### Why
+
+When a process loads the XML file, it validates the interface options in
+**every template** in the file, not just the templates its own application
+uses. A value naming an interface the process can't see fails validation.
+That option is dropped, and `Core-5688-4085` is logged for the process's
+application. Despite that message, the rest of the application's
+configuration still applies. Interface options inside **other applications'**
+`<context>` elements are not validated at all.
+
+Verified on UM 6.17 (hal, 2026-10-15). A test program with
+`LBM_XML_CONFIG_APPNAME=good` and an XML template setting a nonexistent
+`default_interface` logged all three messages, whether or not any
+application used that template and wherever it appeared in the file. The
+program still got its own template's `request_tcp_port_low`. The same
+nonexistent interface inside another application's `<context>` options
+logged nothing.
+
+### What to tell the customer
+
+- The errors are noise if the template isn't used by that process, but
+  they hide real errors, so restructure rather than ignore them.
+- Keep per-host interface options out of shared templates. Put them in the
+  owning application's `<context>` options, or use one XML file per host.
+- A process whose *own* template has a bad interface value silently falls
+  back to the default interface for that option.
+
+---
+
+## `tnwgd` fails if `LBM_XML_CONFIG_FILENAME` is set and `dro.xml` has `<xml-config>`
+
+**Keywords:** `CoreApi-9310-1`, XML configuration has already been loaded,
+DRO won't start, tnwgd XML twice, `LBM_XML_CONFIG_FILENAME` exported, DRO
+`<xml-config>`.
+
+### Symptom
+
+`tnwgd` exits at startup with:
+
+```
+error processing XML configuration file: [CoreApi-9310-1: XML configuration has already been loaded.]
+```
+
+### Why
+
+The UM library loads the file named by `LBM_XML_CONFIG_FILENAME` when it
+initializes. The DRO then tries to load the file named by its own
+`<daemon><xml-config>` element, and the library refuses a second XML load.
+Observed on UM 6.17, typically when a test script exports the variable for
+its applications and the DRO inherits it.
+
+### What to tell the customer
+
+Don't set `LBM_XML_CONFIG_FILENAME` in `tnwgd`'s environment; give the DRO
+its XML file only through `<xml-config>`. In scripts, pass the variable on
+each application's command line (`env LBM_XML_CONFIG_FILENAME=... app`)
+instead of exporting it.
+
+---
+
+## `lbmrespq` quits when any requester goes away
+
+**Keywords:** `lbmrespq` exits, responder quits, End of Transport Session,
+EOS, request/response example, DRO proxy source.
+
+### Symptom
+
+A test using the stock `lbmrespq` as responder stops answering after the
+first requester exits. Its log ends with `End of Transport Session` and
+`Quitting`.
+
+### Why
+
+`lbmrespq`'s receive callback deletes the receiver and unblocks its event
+loop on the first `LBM_MSG_EOS`. Through a DRO, each requester's source is
+a separate proxy source, so the first requester to exit produces an EOS.
+Observed on UM 6.17.
+
+### What to tell the customer
+
+It's example behavior, not a library one. For tests with requesters that
+come and go, use a copy of `lbmrespq` that logs EOS without quitting.
+
+---
+
+## A DRO's proxy sources apply implicit batching
+
+**Keywords:** request latency 200 ms, DRO latency, implicit batching,
+`implicit_batching_minimum_length`, `implicit_batching_interval`, proxy
+source.
+
+### Symptom
+
+Small messages (for example, requests) take about 200 ms more through a
+DRO than their sender's own flushing would suggest; round trips of a few
+ms become 200 to 400 ms.
+
+### Why
+
+Messages wait up to `implicit_batching_interval` (default 200 ms) in each
+source that batches: the sending application's, and again the DRO's proxy
+source when it forwards them. `LBM_MSG_FLUSH` in the application removes
+only the first. The DRO's proxy sources take source options from the
+portal context's XML configuration. Observed on UM 6.17, for a small
+request and a 1.5 MB response through one DRO: 410 ms round trip with
+defaults, 210 ms with the request flushed, 10 ms with
+`implicit_batching_minimum_length` 1 in the application and the DRO.
+
+### What to tell the customer
+
+Most deployments set `implicit_batching_minimum_length` to 1 for both
+applications and DROs. Set it in the DRO's XML configuration (the
+portals' contexts) as well as in the applications.
+
+---
+
+## DRO endpoint "sent" statistics count queued UIMs
+
+**Keywords:** `unicastMsgBytesSent`, `unicast_msg_bytes_sent`, DRO
+endpoint portal stats, UIM queue, DRO memory growth, OOM, backlog not
+visible.
+
+### Symptom
+
+A DRO's memory grows while its endpoint portal statistics show UIMs
+(including responses) sent as fast as they arrive.
+
+### Why
+
+When a DRO forwards a UIM out of an endpoint portal, it queues it on the
+UM library's TCP connection to the destination with no size limit, and
+counts it as sent at that point. Observed on UM 6.17: the endpoint portal's
+`unicastMsgBytesSent` equaled the bytes received from the other portal
+(4,937 MB) while about 1,900 MB was still queued in the DRO, matching its
+`mallocInfo` memory in use.
+
+### What to tell the customer
+
+The endpoint statistics don't show the UIM backlog. Watch the DRO's
+process memory, or `mallocInfo` in its monitoring data
+(`uordblks` + `hblkhd` is memory in use; RSS stays high after memory is
+freed).
+
+---
+
+## Each DRO portal creates an LBT-RM source on the default multicast group
+
+**Keywords:** DRO LBT-RM source, 224.10.10.21, unexpected multicast,
+`transport_lbtrm_multicast_address`, DRO portal source context.
+
+### Symptom
+
+DRO monitoring shows a source transport like
+`LBTRM:<portal address>:14390:...:224.10.10.21:14401` in each portal's
+source context, even though the configuration sets `transport` to `tcp`
+and no application source uses LBT-RM.
+
+### Why
+
+Each portal creates it at startup, before any proxy source exists; the
+proxy sources themselves use the configured transport. Its purpose
+wasn't investigated (observed on UM 6.17). It uses the default LBT-RM
+multicast address unless the portal's configuration overrides it.
+
+### What to tell the customer
+
+It isn't the data path. On networks where the default multicast group is
+in use or filtered, set the LBT-RM address options for the DRO's portal
+contexts.

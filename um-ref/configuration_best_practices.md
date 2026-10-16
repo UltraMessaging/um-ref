@@ -10,17 +10,22 @@ application or Store configuration. For per-option lookup, use
 
 ## 1. UM Library (Application) Config
 
-### Always use `_attr_create_from_xml()`, never `_create()`
+### Prefer `_attr_create_from_xml()` over `_create()`
 
-`lbm_*_attr_create()` (the non-`_from_xml` form) does **not** read the
-XML config table. Options set as XML defaults are silently ignored, but
-XML `<allow>`/`<deny>` constraints are still enforced — producing a
-confusing "my default was ignored *and* I got a deny error" failure.
+`lbm_*_attr_create()` (the non-`_from_xml` form) doesn't read the XML
+config table, but UM applies the XML defaults anyway when the object
+is created, to every option not set with `setopt` (see
+`config_details.md` §2; verified on UM 6.17). The differences: with
+the plain form, `getopt` on the attributes before creation doesn't
+show the XML values, and the object is unnamed, so it matches only
+unnamed XML elements.
 
-Rule: always call `lbm_*_attr_create_from_xml()` (Java:
+Rule: call `lbm_*_attr_create_from_xml()` (Java:
 `new LBMContextAttributes("name")`), even when you pass `""` as the name.
 The `_from_xml` form degrades to plain `_create` behavior when no XML has
-been loaded — it is strictly safer.
+been loaded. When reviewing code that uses the plain form, don't
+assume its XML settings are ignored; check for `setopt` calls that
+override them.
 
 ### Check for soft config errors
 

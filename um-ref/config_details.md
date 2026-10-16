@@ -37,21 +37,53 @@ with `lbm_*_setopt()`.
 The ordering matters: a plain-text option set in step 2 stays "tagged
 as set" and is **not** overwritten by the XML default in step 3.
 
-## 2. The lbm_*_attr_create vs lbm_*_attr_create_from_xml gotcha
+## 2. lbm_*_attr_create vs lbm_*_attr_create_from_xml
 
-`lbm_*_attr_create()` populates from current default attributes
-(factory defaults + plain-text). It does **not** look at the XML
-config table. So if you set a default in `test.xml`, then call
-`lbm_context_attr_create()` (the non-`from_xml` form), the XML
-default is silently ignored. The XML's `<allow>`/`<deny>` constraints
-**are** still enforced at create time, so this can also fail in a
-confusing way: "I set the default to 13000 in XML, why does my code
-get 12000 from the plain-text file *and* fail with a deny error?"
+Both forms end up with the XML defaults; they differ in *when* the
+XML is applied.
 
-Rule of thumb: always use `lbm_*_attr_create_from_xml()` (with a
-descriptive object name, even an empty one), so the XML config
-table participates. The `_from_xml` form is also safe when no XML
-file has been read — it degrades to the plain `_create` behavior.
+- `lbm_*_attr_create_from_xml(&attr, name, ...)` fills the attributes
+  object from the XML config table immediately (the "fill" path),
+  for the named object.
+- `lbm_*_attr_create()` populates from the current default attributes
+  only (factory defaults + plain-text); it doesn't consult the XML
+  table. But the XML is applied anyway when the object is created:
+  `lbm_context_create()` calls `lbm_xmlcfg_check_context()`,
+  `lbm_src_topic_alloc()` calls `lbm_xmlcfg_check_src_topic()`, and
+  `lbm_rcv_topic_lookup()` calls `lbm_xmlcfg_check_rcv_topic()`
+  (wildcard receivers and event queues have equivalents). This
+  "check" path fills every XML option the application did not set
+  explicitly with `setopt` (`usroptmask = attr->setopt_mask`).
+
+So programs that use the plain form, including the UM example
+programs, do pick up XML defaults from `LBM_XML_CONFIG_FILENAME` /
+`LBM_XML_CONFIG_APPNAME`. What the plain form loses:
+
+- `getopt` on the attributes object *before* creation shows the
+  non-XML value. Only the created object reflects the XML.
+- The object has no name, so it matches only an unnamed XML element
+  (for example, `<context>` with no `name`).
+- In both forms, a value set with `setopt` wins over the XML.
+
+Verified on UM 6.17 (hal, 2026-10-15) with plain
+`lbm_context_attr_create()` and an XML template setting
+`request_tcp_port_low` to 14400. `getopt` on the attributes before
+creation returned the default 14391, and the created context bound
+14400. With `setopt` of 16000 on the attributes, the context bound
+16000. With plain `lbm_src_topic_attr_create()` and an XML source
+template setting `transport` to `lbtrm`, the source used LBT-RM.
+Receivers, wildcard receivers, and event queues follow the same code
+pattern (6.17.1 source: `lbmtopic.c`, `lbmwrcv.c`, `lbmev.c`) but
+weren't tested.
+
+XML `<allow>`/`<deny>` restrictions are enforced on this create-time
+path too (not re-verified in the test above).
+
+Rule of thumb: still prefer `lbm_*_attr_create_from_xml()` (with a
+descriptive object name, even an empty one). Named objects can match
+named XML elements, and `getopt` on the attributes reflects the
+final values. The `_from_xml` form is also safe when no XML file has
+been read; it degrades to the plain `_create` behavior.
 
 ## 3. XML config — recommended structure
 

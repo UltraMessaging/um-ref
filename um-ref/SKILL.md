@@ -1242,12 +1242,13 @@ Configuration:
 - Use XML config files. Don't hardcode transport addresses.
 - Don't guess option values; use `lbmopt.py` as the lookup (it
   handles all three source-file locations transparently).
-- Always create attribute objects via `lbm_*_attr_create_from_xml()`
-  (with a descriptive name, even just `""`), never the plain
-  `lbm_*_attr_create()`. The non-`from_xml` form silently ignores
-  XML defaults while still enforcing XML restrictions, which
-  produces "I set the default in XML, why is it ignored *and* why
-  am I being denied?" failures.
+- Prefer creating attribute objects via `lbm_*_attr_create_from_xml()`
+  (with a descriptive name, even just `""`) over the plain
+  `lbm_*_attr_create()`. The plain form still gets XML defaults: UM
+  applies them when the object is created, to every option not set
+  with `setopt`. But its attributes don't show the XML values before
+  creation, and the object is unnamed, so only unnamed XML elements
+  match. See `config_details.md` §2.
 - Several option pairs are *interrelated* — set one without the
   other and you get NAK storms, false timeouts, or undetected loss.
   The recurring pattern is "timeout ≥ N × check interval."
@@ -1268,6 +1269,11 @@ Error handling:
   `lbm_errmsg()` for details.
 - Handle `LBM_MSG_UNRECOVERABLE_LOSS`. Log enough context to
   diagnose (topic, source).
+- `lbm_*_str_getopt()` requires `*optlen` of at least 80
+  (`LBM_MIN_SGET_OPTLEN` in `lbmctx.h`). Smaller buffers fail with
+  "optlen too small" (for example `CoreApi-5688-2119`, `-2131`, `-739`),
+  and the output buffer is left untouched. Use 128 bytes or more.
+  Observed on UM 6.17.
 
 Threading:
 

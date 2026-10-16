@@ -187,10 +187,8 @@ and `index-dro.m4` — a fresh clone should be usable in customer mode
 without anyone having to set `LBM_REPO`.
 
 Users install by cloning this repo and copying `um-ref/` into
-`~/.claude/skills/`; their clone stays intact and serves as the
-record of which commit their install came from. The `um-ref-merge`
-skill trusts that clone state as BASE for future Update and
-Contribute runs.
+`~/.claude/skills/`. They update by saving their local edits to their
+clone, pulling, and copying the merged result back.
 
 ## When this runbook is overkill
 

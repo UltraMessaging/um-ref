@@ -27,27 +27,7 @@ Please install the skill in this repo.
 ```
 
 Claude will copy the `um-ref/` subdirectory into `~/.claude/skills/um-ref/`.
-**Keep this clone intact** — the commit it's checked out at is the
-BASE that future updates and merges (via the `um-ref-merge` skill)
-rely on to reconcile your local edits against upstream.
-
-### The um-ref-merge companion skill
-
-Updating your installed skill safely, and contributing changes back, both
-go through a 3-way merge. That logic lives in a separate skill,
-[`um-ref-merge`](https://github.com/UltraMessaging/um-ref-merge).
-Install it once:
-
-```
-cd $HOME/.claude/skills
-git clone https://github.com/UltraMessaging/um-ref-merge
-```
-
-Then, in that directory, launch Claude Code and ask:
-
-```
-Please install the skill in this repo.
-```
+Keep the clone: it's how you update the skill and contribute changes.
 
 ## Environment variables
 
@@ -85,15 +65,18 @@ Do you have access to the /um-ref skill and the associated source files?
 
 ## Update
 
-To pick up newer skill content while preserving any local edits, `git pull`
-this repo and ask Claude:
+To pick up newer skill content while preserving any local edits, ask
+Claude, in your clone:
 
 ```
 Please update my um-ref skill from this repo.
 ```
 
-Claude uses the `um-ref-merge` skill to perform a 3-way merge, protecting
-customizations you (or Claude on your behalf) made to your active skill.
+Claude first saves your local edits to the clone as a commit, then
+runs `git pull`, so git merges upstream changes with yours. Then it
+copies the result to your active skill. If you run `git pull`
+yourself, have Claude save your edits first: the active skill is
+outside git, so pulling and then copying the repo over it loses them.
 
 ## Customize
 
@@ -103,8 +86,8 @@ You are encouraged to have Claude enhance your local skill as you use it:
 Do you have knowledge that should be added to the /um-ref skill? Any new deep dive files?
 ```
 
-Claude edits `~/.claude/skills/um-ref/` in place. Those edits are yours until
-you either overwrite them (via an update) or contribute them back.
+Claude edits `~/.claude/skills/um-ref/` in place. Updates merge with
+those edits rather than overwrite them.
 
 ## Contribute
 
@@ -112,12 +95,13 @@ Pull requests are welcome. When you have local edits you'd like to
 contribute:
 
 ```
-Please merge my um-ref skill changes back to this repo.
+Please save my um-ref skill changes to this repo.
 ```
 
-Claude uses the `um-ref-merge` skill to produce a 3-way merge on a branch
-in your clone, ready for you to open a pull request via the GitHub web UI
-or `gh pr create`.
+Claude copies your active skill into the clone, checks the diff for
+personal details that don't belong in a public repo, and commits.
+Push to your fork and open a pull request via the GitHub web UI or
+`gh pr create`.
 
 ## Normal Usage
 
@@ -147,7 +131,7 @@ A handful of files are generated from UM source by Python tools
 (`gen_java_api.py`, `gen_dotnet_api.py`) and refreshed periodically via
 `build.sh`. Those files — `java_api.md`, `dotnet_api.md`, plus the
 bundled `config-data.xml`, `index-ume.m4`, and `index-dro.m4` — must not
-be hand-edited; the merge tooling always takes the upstream copy.
+be hand-edited; when merging, always take the upstream copy.
 
 ## Versioning
 

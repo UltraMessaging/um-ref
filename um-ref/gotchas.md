@@ -208,6 +208,50 @@ beyond that is accumulated advertisements, not receiver state.
 
 ---
 
+## `umestored` (or UMDS server) crashes at startup on glibc 2.34+, empty log
+
+**Keywords:** umestored, Store, UMDS, segfault, core dumped, crash at
+startup, empty store.log, SmartHeap, libsmartheap_smp64.so, glibc 2.34,
+RHEL 9, EBF, UM_Glibc_2.34.
+
+### Symptom
+
+The Store (`umestored`) segfaults during initialization and its log file is
+empty (the shell reports `Segmentation fault`). The same applies to the UMDS
+server. Check this first; it is the first thing to rule out when a Store dies
+with nothing in its log.
+
+### Why
+
+The Store and UMDS server link "SmartHeap" (`libsmartheap_smp64.so`), a
+malloc/free replacement. glibc 2.34 and later (Red Hat Linux 9 and above,
+CentOS Stream 9) requires any malloc replacement to provide additional APIs.
+The SmartHeap shipped with older UM releases lacks them. The EBF's README
+says the SmartHeap shipped with versions before 6.17 lacks them (and that
+the EBF applies to any 6.x version). Confirm the host with `ldd --version`
+(2.34 or later means it applies).
+
+### Fix
+
+Apply the "UM_Glibc_2.34" EBF (EBF = Emergency Bug Fix: a patch sent to
+customers to fix a bug; most EBFs are simply a build of the full UM product,
+but this one is a single replacement library). It works for any 6.x version
+of UMP, UMQ or UMDS. In the UM install, find `libsmartheap_smp64.so` (under
+`Linux-glibc-2.17-x86_64/lib`), rename it to `libsmartheap_smp64.so.old`
+(`mv -n`), and copy the EBF's `libsmartheap_smp64.so` in its place.
+
+Internal (lab): the EBF is at `/29W/Amun/home/Morgue/SPECIAL_EBF/UM_Glibc_2.34`
+(contains `README.txt` and the `.so`), reachable from every lab host. (The
+`/proj/Morgue/...` path doesn't exist on `hal`.) Customers get it from UM
+support as `UM_Glibc_2.34.tz`. Replace the library in the install the test
+actually uses; the install is shared across hosts via NFS, so one replacement
+covers them all.
+
+If running `umestored` in WSL, the same rules apply: check `ldd --version`
+and `scp` the EBF's `.so` from the lab as needed.
+
+---
+
 ## UM's bundled OpenSSL on `LD_LIBRARY_PATH` breaks system tools
 
 **Keywords:** LD_LIBRARY_PATH, libssl.so.1.1, libcrypto.so.1.1, OpenSSL,

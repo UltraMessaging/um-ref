@@ -228,8 +228,10 @@ malloc/free replacement. glibc 2.34 and later (Red Hat Linux 9 and above,
 CentOS Stream 9) requires any malloc replacement to provide additional APIs.
 The SmartHeap shipped with older UM releases lacks them. The EBF's README
 says the SmartHeap shipped with versions before 6.17 lacks them (and that
-the EBF applies to any 6.x version). Confirm the host with `ldd --version`
-(2.34 or later means it applies).
+the EBF applies to any 6.x version). But a UM 6.17 install (January 2025
+build) was seen still carrying the 2018 library, so check the library file
+(size and date, below), not the UM version. Confirm the host with
+`ldd --version` (2.34 or later means it applies).
 
 ### Fix
 
@@ -244,8 +246,29 @@ Internal (lab): the EBF is at `/29W/Amun/home/Morgue/SPECIAL_EBF/UM_Glibc_2.34`
 (contains `README.txt` and the `.so`), reachable from every lab host. (The
 `/proj/Morgue/...` path doesn't exist on `hal`.) Customers get it from UM
 support as `UM_Glibc_2.34.tz`. Replace the library in the install the test
-actually uses; the install is shared across hosts via NFS, so one replacement
-covers them all.
+actually uses. The install is shared across hosts via NFS, but one
+replacement does not cover them all: the EBF library fails on glibc older
+than 2.34 (see below), so a shared install can't serve both old- and
+new-glibc hosts with a single copy.
+
+### Telling the two mismatches apart
+
+The Store needs the SmartHeap that matches the host's glibc. Both
+mismatches fail, but differently (observed 2026-10-20, UM 6.17):
+
+| Library on host | Symptom |
+|---|---|
+| Old library (2018, 100639 bytes) on glibc 2.34+ (hal) | Silent segfault, exit 139, empty log |
+| EBF library (Jan 2024, 113000 bytes) on glibc < 2.34 (zeus, 2.28) | Loader error, exit 1: `version 'GLIBC_2.34' not found (required by libsmartheap_smp64.so)` |
+
+A silent crash means the old library is on a new glibc. A `GLIBC_2.34 not
+found` message means the EBF library is on an old glibc. Check with
+`ldd --version` and the library's size and date. The same applies in
+containers, where the image's glibc decides, not the host's.
+
+Without changing a shared install, put a directory holding the right
+library first on `LD_LIBRARY_PATH` (the binaries have no RPATH), chosen by
+glibc version in `lbm.sh`.
 
 If running `umestored` in WSL, the same rules apply: check `ldd --version`
 and `scp` the EBF's `.so` from the lab as needed.

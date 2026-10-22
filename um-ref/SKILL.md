@@ -134,6 +134,7 @@ question, and flag the mismatch.
 | Looking up Java/.NET API | `java_api.md`, `dotnet_api.md` |
 | Tuning or understanding LBT-RM NAK suppression / timers | `lbtrm_details.md` |
 | Message fragmentation, APDU, datagram sizing (1472 / dynamic_fragmentation_reduction) | `fragmentation_details.md` |
+| App uses XSP (Transport Services Providers), or reviewing code that assumes callbacks are serialized on one context thread | `xsp_details.md` |
 | Designing a DRO topology / cross-TRD routing | `dro_details.md`, then `dro_config.md` |
 | Understanding lbmmon output / monitoring API, where a daemon's protobuf stats fields are filled in, or MCS's JSON; one app's monitoring data never arrives | `monitoring_details.md` |
 | Sizing or operating a persistent Store | `configuration_best_practices.md` §3–5, then `store_config.md` for schema lookup |
@@ -230,6 +231,10 @@ question, and flag the mismatch.
   sleep pattern from sleep granularity, and what lbmstrm is and is
   not suitable for. Read when analysing lbmstrm behavior or using it
   as a reference for how to (or not to) structure a send loop.
+- `xsp_details.md` — XSP threading: which callbacks move to XSP
+  threads, serialization assumptions that break, API restrictions on
+  XSP threads, deletion and race handling, review checklist. Read
+  when an app uses XSP or a design relies on callback serialization.
 - `build.sh` — regenerates `java_api.md` and `dotnet_api.md` from
   the upstream Java and C# sources. Run after upstream API changes;
   outputs are checked in so a fresh clone is usable without it.
@@ -576,8 +581,11 @@ Caveats to the "single context thread" picture:
 
 - `lbm_context_process_events` / sequential mode: app pumps events on
   its own thread; no separate context thread.
-- XSP (Transport Services Providers) splits receive-side work across
-  additional threads. The shipped examples don't use XSP.
+- XSP (Transport Services Providers) moves receive-side callbacks for
+  mapped transport sessions to XSP threads; timers, UIM/MIM, and TR
+  callbacks stay on the context thread. Receiver callbacks are then no
+  longer serialized with timers or with each other. The shipped
+  examples don't use XSP. See `xsp_details.md`.
 
 ### Event queues — decoupling callbacks from the context thread
 

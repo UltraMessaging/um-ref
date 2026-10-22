@@ -1,10 +1,4 @@
-# Scratch files
-x
-x.*
-*.x
-*.tmp
-*.tmp[0-9]
-tmp.*
+# Editor backups and leftovers
 ~*
 *~
 *.bak

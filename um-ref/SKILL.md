@@ -16,6 +16,10 @@ user-satisfied prerequisites and a couple of platform rules:
 
 - **`LBM_REPO` / `LBM_INC` / `LBM_DOC`** — at least one must point at a
   UM source (see the Environment check below).
+- **Perforce depot:** UM source lives in the **`//UMprod`** depot
+  (stream depot). There is a separate, unrelated **`//UM`** depot
+  ("Unified Messaging code") — don't confuse the two when typing depot
+  paths.
 - **`python` must invoke Python 3.6+.** The helper tools (`lbmopt.py`,
   `xmlopt.py`, the `gen_*` scripts) are invoked as **`python …`**, never
   `python3`. They are pure-Python and OS-agnostic; they only need a

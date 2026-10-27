@@ -39,7 +39,9 @@ property is configuration, not geography.
 
 - Every context belongs to exactly one TRD.
 - Each TRD is tagged with a **domain-id** (a numeric identifier) inside
-  the DRO world.
+  the DRO world. The domain-id exists only because a DRO endpoint portal
+  attaches to the TRD. A TRD with no DRO endpoint is still a TRD (its
+  contexts resolve topics among themselves), but it has no domain-id.
 - A topic name is the same string across TRDs, but the **source string**
   (transport address) is different per TRD because each TRD's source is a
   different entity — possibly the real source, possibly a proxy.
@@ -578,7 +580,8 @@ DRO.
   config and (for UDP TR) multicast reachability. Logical, not
   geographic.
 - **Domain-id** — numeric tag uniquely identifying a TRD within a
-  DRO-connected deployment.
+  DRO-connected deployment. Assigned only to TRDs that have a DRO
+  endpoint portal; a TRD without one has no domain-id.
 - **Portal** — a connection point on a DRO. Endpoint or peer.
 - **Endpoint portal** — portal into a TRD (one per TRD per DRO).
 - **Peer portal** — portal to another DRO, over TCP (+ optional UDP).

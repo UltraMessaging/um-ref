@@ -1,6 +1,6 @@
 ---
 name: um-ref
-description: Learn about Ultra Messaging (UM) in support of coding, configuring, and/or testing it. Triggers when the user asks to design, build, configure, port, extend, or test a program that uses the UM API in C, Java, or C#/.NET — e.g. code that includes `lbm.h` (from `$LBM_REPO/src/lib/lbm/` or `$LBM_INC/`), imports `com.latencybusters.lbm.*`, or references `UltraMessaging` / `LBM*` types. Also triggers when UM is the *subject* of the task: reading, interpreting, reviewing, or analyzing UM configuration files (library XML with `<um-configuration>`, Store XML, DRO/tnwgd configs, lbmrd configs, `.cfg` files with UM options); analyzing, reviewing, or designing application code that calls the UM API; explaining UM option semantics or diagnosing UM behavior (loss, NAKs, resolution, DRO routing). Keyword signals: `tnwgd`, `DRO`, `LBM`, `SRS`, `umestored`, `lbmrd`, option names like `transport_lbtru_*` / `transport_lbtrm_*` / `resolver_*` / `ume_*`. Do NOT trigger on incidental keyword sightings (directory listings, log filenames, grep output) where UM is not the subject of the task. Covers publishers, receivers, contexts, event queues, timers, wildcard receivers, persistence (UMP), and related UM features.
+description: "Learn about Ultra Messaging (UM) in support of coding, configuring, and/or testing it. Triggers when the user asks to design, build, configure, port, extend, or test a program that uses the UM API in C, Java, or C#/.NET — e.g. code that includes `lbm.h` (from `$LBM_REPO/src/lib/lbm/` or `$LBM_INC/`), imports `com.latencybusters.lbm.*`, or references `UltraMessaging` / `LBM*` types. Also triggers when UM is the *subject* of the task: reading, interpreting, reviewing, or analyzing UM configuration files (library XML with `<um-configuration>`, Store XML, DRO/tnwgd configs, lbmrd configs, `.cfg` files with UM options); analyzing, reviewing, or designing application code that calls the UM API; explaining UM option semantics or diagnosing UM behavior (loss, NAKs, resolution, DRO routing). Keyword signals: `tnwgd`, `DRO`, `LBM`, `SRS`, `umestored`, `lbmrd`, option names like `transport_lbtru_*` / `transport_lbtrm_*` / `resolver_*` / `ume_*`. Do NOT trigger on incidental keyword sightings (directory listings, log filenames, grep output) where UM is not the subject of the task. Covers publishers, receivers, contexts, event queues, timers, wildcard receivers, persistence (UMP), and related UM features."
 ---
 
 # Ultra Messaging (UM) — concepts for writing UM apps
@@ -363,7 +363,7 @@ All processes that should discover each other share a **TR domain**
 - **`lbmrd`** (unicast TR) — stateless server simulating multicast for
   TR. Configured via `resolver_unicast_daemon`. Use when multicast is
   unavailable or when client churn is high.
-- **SRS** (TCP TR) — Smart Request Service server. Most scalable;
+- **SRS** (TCP TR) — Stateful Resolver Service server. Most scalable;
   only advertises topics that have been subscribed (big bandwidth win).
   Configured via `resolver_service`.
 
@@ -445,6 +445,22 @@ filtering enabled **must have a reachable request port**.  If
 receivers cannot register interest and will receive no data.  The
 source logs Core-5988-2 when a receiver attempts the handshake but
 the request port is not available.
+
+### Every TCP connection — data or UIM — is one-directional
+
+A UM TCP transport connection carries application data in one
+direction only: source → receiver. The receiver never sends
+application data back upstream on that same socket. This also holds
+for **UIM** (inter-context control) connections: each UIM connection
+is itself one-directional, not a bidirectional pipe. Where a receiver
+genuinely needs to send something to the source side — the
+source-side-filtering topic-interest handshake above, a persistence
+receiver's consumption reports to its Store (§10/§15) — that traffic
+rides a **separate** connection dedicated to that direction, not the
+same socket carrying the forward data flow. There is no single
+bidirectional TCP socket anywhere in UM's transport or UIM layer;
+two-way communication between a pair of contexts is always two
+one-directional connections.
 
 ## 5. Messages
 
@@ -802,6 +818,22 @@ persistence, this whole section can be skipped.
 So persistence does not add latency to normal delivery, but it does
 add a second thing that can fill, block, or fail.
 
+### A Store is just another consumer on the source's TCP transport
+
+For a persistent source whose data transport is TCP, there is a
+single transport at the UM level that internally fans out into one
+TCP connection per consumer — and **a registered Store counts as a
+consumer on that transport, exactly like a receiver**. A TCP source
+can only publish as fast as the slowest consumer on it drains its
+socket. This means a Store that stops draining its connection (disk
+stall, CPU starvation, GC pause, anything that stops it reading off
+the wire) can back-pressure the *entire* transport, stalling delivery
+to every live receiver on that same source — not just the Store's own
+copy. See `gotchas.md` ("A CPU-starved Store can stall every source
+that persists to it") for the full failure chain, including why the
+app-level `ume_store_activity_timeout` declaration does **not** by
+itself relieve this stall.
+
 ### Process vs instance vs repository
 
 - **Store Process** — one `umestored` daemon.
@@ -963,6 +995,30 @@ failures.
   well-placed QC group is the common case.
 
 ## 15. Other Store concepts
+
+### Store/Source liveness is activity-based, not socket-probing — and receivers depend entirely on it secondhand
+
+Store and source each judge the other's liveness from **traffic**,
+not from any TCP-level probe of their own:
+
+- The **Store** considers a source live if it's seeing inbound data
+  from it, OR a response to the Store's own keepalive
+  (`keepalive-interval`) to that source.
+- The **source** considers a Store live if it's seeing consumption
+  reports (ACKs) from it, OR a response to the source's keepalive to
+  that Store.
+
+Crucially, **persistent receivers have no independent Store-liveness
+mechanism of their own.** A receiver learns which Stores exist and are
+considered live purely from the **SRI** (Source Registration Info)
+that the source publishes — it does not probe Stores itself, and
+there is no `ume_store_activity_timeout` equivalent on the
+receiver side. Worse, SRI travels **only on the ordinary source→
+receiver data transport**, never over a separate UIM/control channel
+— so if that data transport itself goes stale or half-open, the
+receiver loses its only channel for Store-liveness information at
+the same moment it would most need it. See `gotchas.md` for the
+end-to-end failure chain this enables.
 
 ### Store-side proxy sources (distinct from DRO proxy sources)
 

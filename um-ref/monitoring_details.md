@@ -62,6 +62,31 @@ Source: `src/mon/lbmmontrlbm.c`, `SourceContextOption[]` and
 `lbm_context_attr_str_setopt(..., "request_tcp_bind_request_port", "0")`
 call in the init path.
 
+## Counters are cumulative since object creation, reset on process restart
+
+Every lbmmon statistics counter (context stats, source/receiver
+transport stats, IM stats, and the same counters as exported by any
+UM-library consumer of this API — e.g. a DRO's `<monitor>` CSV/PB
+portal stats, since `tnwgd` is just another application calling into
+the same monitoring transport) is **cumulative since the monitored
+object was created**, not an interval/rate value. This is a property
+of the UM library's monitoring subsystem itself, not anything
+component-specific.
+
+Two consequences for analyzing a series of snapshots:
+
+- Rate/volume analysis requires a delta step between consecutive
+  snapshots (by timestamp), then dividing by elapsed seconds — the
+  raw counters alone don't give a rate.
+- A process restart recreates the monitored object, so its counters
+  restart at 0. In a delta series this shows up as a single sharp,
+  large **negative** delta at the restart boundary (dwarfing any
+  organic fluctuation) — a reliable, format-level signal for *when*
+  a restart happened, independent of which component emitted the
+  stats and independent of whether its own log is available. Exclude
+  that boundary row before summing totals or averaging rates, or it
+  will corrupt the result.
+
 ## The monitoring context inherits application-level XML templates
 
 The LBM monitoring transport creates its context with `context_name` set

@@ -474,6 +474,9 @@ ways to be notified:
    retention) and UMP. Required for streaming sources if you need to
    act on forced reclaims; for UMP either mechanism works.
 
+In flight-size notify mode (`ume_flight_size_behavior = notify`),
+forced reclaims are the expected overflow path; see SKILL.md §13.
+
 ### RPP multi-second stability ACK delay
 
 There is a known interaction between several RPP configuration options

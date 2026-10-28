@@ -921,6 +921,30 @@ flight** and keeps a copy for retransmission.
 - When the limit is hit, `lbm_src_send()` blocks or returns
   `LBM_EWOULDBLOCK` per `ume_flight_size_behavior`.
 
+### Notify mode (`ume_flight_size_behavior = notify`)
+
+In notify mode the source never blocks on flight size. Instead, a
+`LBM_SRC_EVENT_FLIGHT_SIZE_NOTIFICATION` source event fires with state
+`OVER` when in-flight crosses the limit (message count or bytes), and
+with state `UNDER` when both are back at or below it.
+
+**Retention is not bypassed.** Each message goes into the retention
+buffer as usual. Notify mode only skips the blocking gate that block
+mode applies before the send. The only extra work is counting the
+message in flight and firing the events.
+
+**Consequence:** while over flight size, unstable messages pile up in
+retention. When retention hits `ume_retention_size_limit`, the oldest
+unstable messages are force-reclaimed. The source calls
+`ume_force_reclaim_function`, delivers `UME_MESSAGE_RECLAIMED_EX` with
+the `FORCED` flag, and decrements in-flight for each one. That can
+produce the `UNDER` event even though the reclaimed messages never
+became stable.
+
+**Sizing:** in notify mode, size `ume_retention_size_limit` for the
+largest unstable backlog you expect. Otherwise unstable messages are
+lost from the source's retention.
+
 ### Stability-ACK batching (Store → source)
 
 - `stability-ack-minimum-number` — accumulate this many ACKs before
